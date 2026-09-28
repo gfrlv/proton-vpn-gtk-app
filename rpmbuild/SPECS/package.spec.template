@@ -60,10 +60,13 @@ desktop-file-install --dir=%{{buildroot}}%{{_datadir}}/applications %{{SOURCE3}}
 desktop-file-validate %{{buildroot}}%{{_datadir}}/applications/%{{desktop_entry_filename}}
 mkdir -p %{{buildroot}}%{{_datadir}}/icons/hicolor/scalable/apps
 cp %{{SOURCE4}} %{{buildroot}}%{{_datadir}}/icons/hicolor/scalable/apps/%{{logo_filename}}
+mkdir -p %{{buildroot}}%{{_datadir}}/icons/hicolor/scalable/status
+cp proton/vpn/app/gtk/assets/icons/proton-vpn-state-*.svg %{{buildroot}}%{{_datadir}}/icons/hicolor/scalable/status/
 
 %files -n %{{name}} -f %{{pyproject_files}}
 %{{_bindir}}/protonvpn-app
 %{{_datadir}}/applications/%{{desktop_entry_filename}}
 %{{_datadir}}/icons/hicolor/scalable/apps/%{{logo_filename}}
+%{{_datadir}}/icons/hicolor/scalable/status/proton-vpn-state-*.svg
 
 %changelog

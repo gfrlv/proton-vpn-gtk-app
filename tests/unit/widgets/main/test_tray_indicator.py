@@ -68,14 +68,14 @@ def test_quit_menu_entry_activate_triggers_quit_header_bar_menu_entry(controller
 
 
 @pytest.mark.parametrize(
-    "initial_state, icon, description", [
-        (states.Connected(), TrayIndicator.CONNECTED_ICON, TrayIndicator.CONNECTED_ICON_DESCRIPTION),
-        (states.Disconnected(), TrayIndicator.DISCONNECTED_ICON, TrayIndicator.DISCONNECTED_ICON_DESCRIPTION),
-        (states.Error(), TrayIndicator.ERROR_ICON, TrayIndicator.ERROR_ICON_DESCRIPTION)
+    "initial_state, icon, description, icon_path", [
+        (states.Connected(), TrayIndicator.CONNECTED_ICON, TrayIndicator.CONNECTED_ICON_DESCRIPTION, TrayIndicator.CONNECTED_ICON_PATH),
+        (states.Disconnected(), TrayIndicator.DISCONNECTED_ICON, TrayIndicator.DISCONNECTED_ICON_DESCRIPTION, TrayIndicator.DISCONNECTED_ICON_PATH),
+        (states.Error(), TrayIndicator.ERROR_ICON, TrayIndicator.ERROR_ICON_DESCRIPTION, TrayIndicator.ERROR_ICON_PATH)
     ]
 )
 def test_tray_indicator_icon_is_set_to_expected_state_icon_when_initializing_indicator(
-    initial_state, icon, description, controller_mock,tray_detection_mock
+    initial_state, icon, description, icon_path, controller_mock,tray_detection_mock
 ):
     """This test asserts that when the tray is initialized in any of the given states,
     the tray icon will reflect those states."""
@@ -88,18 +88,18 @@ def test_tray_indicator_icon_is_set_to_expected_state_icon_when_initializing_ind
     tray_indicator = TrayIndicator(controller=controller_mock, tray_icon=indicator_mock,tray_availability_detection=tray_detection_mock)
     tray_indicator.setup(main_window)
     process_gtk_events()
-    indicator_mock.change_icon.assert_called_once_with(icon, description)
+    indicator_mock.change_icon.assert_called_once_with(icon, description, icon_path)
 
 
 @pytest.mark.parametrize(
-    "new_state, icon, description", [
-        (states.Connected(), TrayIndicator.CONNECTED_ICON, TrayIndicator.CONNECTED_ICON_DESCRIPTION),
-        (states.Disconnected(), TrayIndicator.DISCONNECTED_ICON, TrayIndicator.DISCONNECTED_ICON_DESCRIPTION),
-        (states.Error(), TrayIndicator.ERROR_ICON, TrayIndicator.ERROR_ICON_DESCRIPTION)
+    "new_state, icon, description, icon_path", [
+        (states.Connected(), TrayIndicator.CONNECTED_ICON, TrayIndicator.CONNECTED_ICON_DESCRIPTION, TrayIndicator.CONNECTED_ICON_PATH),
+        (states.Disconnected(), TrayIndicator.DISCONNECTED_ICON, TrayIndicator.DISCONNECTED_ICON_DESCRIPTION, TrayIndicator.DISCONNECTED_ICON_PATH),
+        (states.Error(), TrayIndicator.ERROR_ICON, TrayIndicator.ERROR_ICON_DESCRIPTION, TrayIndicator.ERROR_ICON_PATH)
     ]
 )
 def test_tray_indicator_icon_is_updated_when_vpn_connection_switches_states(
-    new_state, icon, description, controller_mock, tray_detection_mock
+    new_state, icon, description, icon_path, controller_mock, tray_detection_mock
 ):
     """This test asserts that when the tray is initialized with a state, whenever a switch occurs from the
     current state to another state, the tray icon will reflect those states changes."""
@@ -115,7 +115,7 @@ def test_tray_indicator_icon_is_updated_when_vpn_connection_switches_states(
 
     tray_indicator.status_update(new_state)
     process_gtk_events()
-    indicator_mock.change_icon.assert_called_with(icon, description)
+    indicator_mock.change_icon.assert_called_with(icon, description, icon_path)
 
 
 @pytest.mark.parametrize(

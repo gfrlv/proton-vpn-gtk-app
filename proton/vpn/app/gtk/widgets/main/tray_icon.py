@@ -50,7 +50,7 @@ import os
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-from gi.repository import GLib
+from gi.repository import GLib, GdkPixbuf, Gdk, Gtk
 from proton.vpn.app.gtk.util import APPLICATION_ID
 from proton.vpn import logging
 
@@ -60,6 +60,8 @@ logger = logging.getLogger(__name__)
 TRAY_TITLE = "Proton VPN"
 TRAY_ICON_NAME = "proton-vpn-sign"
 TRAY_ICON_DESCRIPTION = ""
+# Sizes at which icons given as file paths are rasterized for IconPixmap.
+TRAY_ICON_PIXMAP_SIZES = (16, 22, 24, 32, 48, 64)
 
 # StatusNotifierItem specification
 SNI_INTERFACE = "org.kde.StatusNotifierItem"
@@ -82,6 +84,8 @@ class StatusNotifierItemProperty(Enum):
     ID = "Id"
     TITLE = "Title"
     ICON_NAME = "IconName"
+    ICON_THEME_PATH = "IconThemePath"
+    ICON_PIXMAP = "IconPixmap"
     MENU = "Menu"
     ITEM_IS_MENU = "ItemIsMenu"
     ICON_ACCESSIBLE_DESCRIPTION = "IconAccessibleDesc"
@@ -232,6 +236,62 @@ class _DBusMenuService(dbus.service.Object):
         self.LayoutUpdated(self.revision, 0)
 
 
+def _is_icon_installed(icon_name: str) -> bool:
+    """Whether `icon_name` is found in the icon theme.
+
+    GTK searches the same XDG icon directories as tray hosts do, so this
+    tells whether hosts can resolve IconName on their own.
+    """
+    display = Gdk.Display.get_default()
+    if display is None:
+        return False
+    return Gtk.IconTheme.get_for_display(display).has_icon(icon_name)
+
+
+def _load_icon_pixmap(icon_path: Optional[str]) -> dbus.Array:
+    """Rasterize an icon file into the SNI IconPixmap format, a(iiay).
+
+    Each entry is (width, height, pixels) with pixels in ARGB32, network
+    byte order. Returns an empty array if there is no `icon_path` or it
+    cannot be loaded.
+    """
+    pixmaps = dbus.Array([], signature="(iiay)")
+    if not icon_path:
+        return pixmaps
+
+    for size in TRAY_ICON_PIXMAP_SIZES:
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(icon_path, size, size)
+        except GLib.Error:
+            logger.warning(
+                f"Unable to load tray icon {icon_path}",
+                category="TRAY_ICON",
+                event="ICON_PIXMAP_LOAD_FAILED",
+            )
+            return dbus.Array([], signature="(iiay)")
+
+        pixbuf = pixbuf.add_alpha(False, 0, 0, 0)
+        width, height = pixbuf.get_width(), pixbuf.get_height()
+        rowstride = pixbuf.get_rowstride()
+        data = pixbuf.get_pixels()
+
+        argb = bytearray(width * height * 4)
+        for row in range(height):
+            rgba = data[row * rowstride:row * rowstride + width * 4]
+            offset = row * width * 4
+            argb[offset + 0:offset + width * 4:4] = rgba[3::4]
+            argb[offset + 1:offset + width * 4:4] = rgba[0::4]
+            argb[offset + 2:offset + width * 4:4] = rgba[1::4]
+            argb[offset + 3:offset + width * 4:4] = rgba[2::4]
+
+        pixmaps.append(dbus.Struct(
+            (dbus.Int32(width), dbus.Int32(height), dbus.ByteArray(bytes(argb))),
+            signature="iiay"
+        ))
+
+    return pixmaps
+
+
 class _StatusNotifierItem(dbus.service.Object):
     """Internal StatusNotifierItem implementation"""
 
@@ -244,6 +304,8 @@ class _StatusNotifierItem(dbus.service.Object):
         self.bus_name = dbus.service.BusName(self.bus_name_str, bus)
 
         super().__init__(self.bus_name, object_path)
+
+        self._icon_pixmap_cache: dict[tuple[str, Optional[str]], dbus.Array] = {}
 
         # Create DBusMenu
         self.menu = _DBusMenuService(bus, tray_icon.menu_items)
@@ -268,6 +330,24 @@ class _StatusNotifierItem(dbus.service.Object):
                 event="STATUS_NOTIFIER_WATCHER_REGISTRATION_FAILED",
             )
 
+    @property
+    def _icon_pixmap(self) -> dbus.Array:
+        """Icon as raw ARGB32 image data.
+
+        Fallback for when the host cannot find IconName in the icon theme,
+        e.g. when running from a source checkout where the icons are not
+        installed. Left empty when the icon is installed, as then every host
+        finds it by name.
+        """
+        key = (self.tray.icon_name, self.tray.icon_path)
+        if key not in self._icon_pixmap_cache:
+            if _is_icon_installed(self.tray.icon_name):
+                pixmap = dbus.Array([], signature="(iiay)")
+            else:
+                pixmap = _load_icon_pixmap(self.tray.icon_path)
+            self._icon_pixmap_cache[key] = pixmap
+        return self._icon_pixmap_cache[key]
+
     @dbus.service.method(
         dbus_interface="org.freedesktop.DBus.Properties",
         in_signature="ss", out_signature="v"
@@ -285,6 +365,10 @@ class _StatusNotifierItem(dbus.service.Object):
             StatusNotifierItemProperty.ID.value: dbus.String(self.tray.app_id),
             StatusNotifierItemProperty.TITLE.value: dbus.String(self.tray.title),
             StatusNotifierItemProperty.ICON_NAME.value: dbus.String(self.tray.icon_name),
+            StatusNotifierItemProperty.ICON_THEME_PATH.value: dbus.String(
+                self.tray.icon_theme_path
+            ),
+            StatusNotifierItemProperty.ICON_PIXMAP.value: self._icon_pixmap,
             StatusNotifierItemProperty.MENU.value: dbus.ObjectPath(DBUSMENU_PATH),
             StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(True),
             StatusNotifierItemProperty.ICON_ACCESSIBLE_DESCRIPTION.value: dbus.String(
@@ -312,6 +396,10 @@ class _StatusNotifierItem(dbus.service.Object):
             StatusNotifierItemProperty.ID.value: dbus.String(self.tray.app_id),
             StatusNotifierItemProperty.TITLE.value: dbus.String(self.tray.title),
             StatusNotifierItemProperty.ICON_NAME.value: dbus.String(self.tray.icon_name),
+            StatusNotifierItemProperty.ICON_THEME_PATH.value: dbus.String(
+                self.tray.icon_theme_path
+            ),
+            StatusNotifierItemProperty.ICON_PIXMAP.value: self._icon_pixmap,
             StatusNotifierItemProperty.MENU.value: dbus.ObjectPath(DBUSMENU_PATH),
             StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(True),
             StatusNotifierItemProperty.ICON_ACCESSIBLE_DESCRIPTION.value: dbus.String(
@@ -329,10 +417,11 @@ class _StatusNotifierItem(dbus.service.Object):
     def NewIcon(self):  # pylint: disable=invalid-name
         """New icon"""
 
-    def change_icon(self, icon_name, icon_desc):
+    def change_icon(self, icon_name, icon_desc, icon_path=None):
         """Change icon"""
         self.tray.icon_name = icon_name
         self.tray.icon_desc = icon_desc
+        self.tray.icon_path = icon_path
         self.NewIcon()
 
 
@@ -360,7 +449,9 @@ class TrayIcon:  # pylint: disable=too-many-instance-attributes
         app_id=APPLICATION_ID,
         title=TRAY_TITLE,
         icon_name=TRAY_ICON_NAME,
-        icon_desc=TRAY_ICON_DESCRIPTION
+        icon_desc=TRAY_ICON_DESCRIPTION,
+        icon_path=None,
+        icon_theme_path=""
     ):
         """
         Initialize tray icon
@@ -369,11 +460,17 @@ class TrayIcon:  # pylint: disable=too-many-instance-attributes
             app_id: Application ID (e.g., "com.example.myapp")
             title: Tray icon tooltip/title
             icon_name: Icon name from theme (e.g., "application-x-executable")
+            icon_path: Optional image file of the icon, sent as IconPixmap
+                for hosts that cannot find `icon_name` in the icon theme
+            icon_theme_path: Optional extra directory where hosts look up
+                icon names, for when the icons are not installed in the theme
         """
         self.app_id = app_id
         self.title = title
         self.icon_name = icon_name
         self.icon_desc = icon_desc
+        self.icon_path = icon_path
+        self.icon_theme_path = icon_theme_path
         self.status = "Active"
 
         self.menu_items = []
@@ -445,15 +542,16 @@ class TrayIcon:  # pylint: disable=too-many-instance-attributes
         # Create StatusNotifierItem which register itself to the StatusNotifierWatcher
         self._sni = _StatusNotifierItem(self, self._bus, SNI_PATH)
 
-    def change_icon(self, icon_name, icon_desc):
+    def change_icon(self, icon_name, icon_desc, icon_path=None):
         """
         Change the tray icon
 
         Args:
             icon_name: New icon name from theme
+            icon_path: Optional image file of the icon, see `__init__`
         """
         if self._sni:
-            self._sni.change_icon(icon_name, icon_desc)
+            self._sni.change_icon(icon_name, icon_desc, icon_path)
 
     def update_menu(self):
         """

@@ -1,2 +1,3 @@
 rpmbuild/SOURCES/proton.vpn.app.gtk.desktop usr/share/applications/
 rpmbuild/SOURCES/proton-vpn-logo.svg usr/share/icons/hicolor/scalable/apps
+proton/vpn/app/gtk/assets/icons/proton-vpn-state-*.svg usr/share/icons/hicolor/scalable/status

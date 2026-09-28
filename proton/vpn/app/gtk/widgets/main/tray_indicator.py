@@ -89,21 +89,21 @@ class TrayIndicator:
         thus before displaying the buttons we check if user is logged in or not,
         see `_on_connection_disconnected` for implementation details.
     """
-    DISCONNECTED_ICON = str(
-        ICONS_PATH / f"state-{states.Disconnected.__name__.lower()}.svg"
-    )
+    # Icon theme names, installed to hicolor/scalable/status by the packaging.
+    # The bundled copies in ICONS_PATH have the same names, so hosts can also
+    # find them through IconThemePath, or get them as a pixmap (*_ICON_PATH).
+    DISCONNECTED_ICON = f"proton-vpn-state-{states.Disconnected.__name__.lower()}"
+    DISCONNECTED_ICON_PATH = str(ICONS_PATH / f"{DISCONNECTED_ICON}.svg")
     DISCONNECTED_ICON_DESCRIPTION = str(
         f"VPN {states.Disconnected.__name__.lower()}"
     )
-    CONNECTED_ICON = str(
-        ICONS_PATH / f"state-{states.Connected.__name__.lower()}.svg"
-    )
+    CONNECTED_ICON = f"proton-vpn-state-{states.Connected.__name__.lower()}"
+    CONNECTED_ICON_PATH = str(ICONS_PATH / f"{CONNECTED_ICON}.svg")
     CONNECTED_ICON_DESCRIPTION = str(
         f"VPN {states.Connected.__name__.lower()}"
     )
-    ERROR_ICON = str(
-        ICONS_PATH / f"state-{states.Error.__name__.lower()}.svg"
-    )
+    ERROR_ICON = f"proton-vpn-state-{states.Error.__name__.lower()}"
+    ERROR_ICON_PATH = str(ICONS_PATH / f"{ERROR_ICON}.svg")
     ERROR_ICON_DESCRIPTION = str(
         f"VPN {states.Error.__name__.lower()}"
     )
@@ -132,7 +132,7 @@ class TrayIndicator:
             raise TrayIndicatorNotSupported("Tray can not be used")
 
         if self._tray is None:
-            self._tray = TrayIcon()
+            self._tray = TrayIcon(icon_theme_path=str(ICONS_PATH))
             self._tray.setup()
             logger.info("Tray enabled")
 
@@ -280,7 +280,8 @@ class TrayIndicator:
     def _on_connection_disconnected(self):
         self.enable_connect_entry = True
         self._tray.change_icon(self.DISCONNECTED_ICON,
-                               self.DISCONNECTED_ICON_DESCRIPTION)
+                               self.DISCONNECTED_ICON_DESCRIPTION,
+                               self.DISCONNECTED_ICON_PATH)
         if not self._controller.user_logged_in:
             self._update()
             return
@@ -299,7 +300,8 @@ class TrayIndicator:
         self.display_disconnect_entry = True
         self.display_connect_entry = False
         self._tray.change_icon(self.CONNECTED_ICON,
-                               self.CONNECTED_ICON_DESCRIPTION)
+                               self.CONNECTED_ICON_DESCRIPTION,
+                               self.CONNECTED_ICON_PATH)
         self._update()
 
     def _on_connection_disconnecting(self):
@@ -311,7 +313,8 @@ class TrayIndicator:
         self.display_disconnect_entry = False
         self.display_connect_entry = True
         self._tray.change_icon(self.ERROR_ICON,
-                               self.ERROR_ICON_DESCRIPTION)
+                               self.ERROR_ICON_DESCRIPTION,
+                               self.ERROR_ICON_PATH)
         self._update()
 
     def activate_toggle_app_visibility_menu_entry(self):
